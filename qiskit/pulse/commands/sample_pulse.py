@@ -11,9 +11,9 @@ Sample pulse.
 import numpy as np
 
 from qiskit.pulse.channels import OutputChannel
-from qiskit.pulse.common.interfaces import Instruction
-from qiskit.pulse.common.timeslots import Interval, Timeslot, TimeslotOccupancy
+from qiskit.pulse.common.timeslots import Interval, Timeslot, TimeslotCollection
 from qiskit.pulse.exceptions import PulseError
+from .instruction import Instruction
 from .pulse_command import PulseCommand
 
 
@@ -29,8 +29,6 @@ class SamplePulse(PulseCommand):
         Raises:
             PulseError: when pulse envelope amplitude exceeds 1.
         """
-        name = name or str('pulse_object_%s' % id(self))
-
         super().__init__(duration=len(samples), name=name)
 
         if np.any(np.abs(samples) > 1):
@@ -87,20 +85,12 @@ class SamplePulse(PulseCommand):
 
 
 class DriveInstruction(Instruction):
-    """Pulse to drive a pulse shape to a `OutputChannel`. """
+    """Instruction to drive a pulse to an `OutputChannel`. """
 
-    def __init__(self, command: SamplePulse, channel: OutputChannel):
-        self._command = command
+    def __init__(self, command: SamplePulse, channel: OutputChannel, start_time: int = 0):
+        slots = [Timeslot(Interval(start_time, start_time + command.duration), channel)]
+        super().__init__(command, start_time, TimeslotCollection(slots))
         self._channel = channel
-        self._occupancy = TimeslotOccupancy([Timeslot(Interval(0, command.duration), channel)])
-
-    @property
-    def duration(self):
-        return self._command.duration
-
-    @property
-    def occupancy(self):
-        return self._occupancy
 
     @property
     def command(self) -> SamplePulse:
@@ -113,4 +103,4 @@ class DriveInstruction(Instruction):
         return self._channel
 
     def __repr__(self):
-        return '%s >> %s' % (self._command, self._channel)
+        return '%4d: %s -> %s' % (self._start_time, self._command, self._channel)

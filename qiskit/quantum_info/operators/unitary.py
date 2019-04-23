@@ -14,8 +14,11 @@ A simple unitary class and some tools.
 import copy
 import numpy
 import sympy
-from qiskit.exceptions import QiskitError
+
 from qiskit.circuit.gate import Gate
+from qiskit.quantum_info.operators.operator import Operator
+from qiskit.quantum_info.synthesis.two_qubit_kak import two_qubit_kak
+from qiskit.exceptions import QiskitError
 
 
 class Unitary(Gate):
@@ -31,12 +34,14 @@ class Unitary(Gate):
         Create unitary.
 
         Args:
-            representation (numpy.ndarray or list(list) or Unitary): unitary representation.
+            representation (numpy.ndarray or list(list) or Unitary): unitary representation
             label (str): identifier hint for backend
-            validate (bool): whether to validate unitarity of matrix when supplied
-                either here or with Unitary.matrix.
-            rtol (float): relative tolerance (see numpy.allclose).
-            atol (float): absolute tolerance (see numpy.allclose).
+            validate (bool): whether to validate unitarity of matrix
+            rtol (float): relative tolerance (see numpy.allclose)
+            atol (float): absolute tolerance (see numpy.allclose)
+
+        Raises:
+            QiskitError: if input representation is not valid.
         """
         self.__validate = validate
         self.__rtol = rtol
@@ -47,13 +52,23 @@ class Unitary(Gate):
         self.__label = None
         self.__dimension = None
         # set representation (depends on previous attributes)
-        if isinstance(representation, (numpy.ndarray, sympy.Matrix, list)):
-            self._representation = representation
-            super().__init__('unitary', self.__n_qubits,
-                             [sympy.Matrix(representation)])
-        elif isinstance(representation, Unitary):
+        if isinstance(representation, Unitary):
             for attrib, value in vars(representation).items():
                 setattr(self, attrib, value)
+        else:
+            if hasattr(representation, 'to_operator'):
+                # Convert to an operator and check if unitary
+                representation = representation.to_operator()
+                if not representation.is_unitary():
+                    raise QiskitError('Input is not unitary.')
+                # Extract numpy matrix from Opeator
+                representation = representation.data
+            if isinstance(representation, (numpy.ndarray, sympy.Matrix, list)):
+                self._representation = representation
+                super().__init__('unitary', self.__n_qubits,
+                                 [sympy.Matrix(representation)])
+            else:
+                raise QiskitError('Invalid unitary representation')
         if isinstance(label, str):
             self._label = label
         self._decompostion = []  # storage (needed?)
@@ -72,6 +87,19 @@ class Unitary(Gate):
                 return False
         return True
 
+    def __str__(self):
+        return str(self.representation)
+
+    def __repr__(self):
+        return '{}\n{}'.format(super().__repr__(),
+                               self.__representation.__repr__())
+
+    def _define(self):
+        """Calculate a subcircuit that implements this unitary.
+        """
+        if self.__dimension == 4:
+            self.definition = two_qubit_kak(self.representation)
+
     @property
     def dimension(self):
         """dimension of matrix
@@ -80,6 +108,10 @@ class Unitary(Gate):
             int: dimension of matrix
         """
         return self.__dimension
+
+    def to_operator(self):
+        """Convert unitary to Operator object"""
+        return Operator(self.representation)
 
     def tensor(self, other):
         """
@@ -96,8 +128,8 @@ class Unitary(Gate):
         dim = self.dimension + other.dimension
         output = Unitary(
             numpy.empty((dim, dim), dtype='complex'), validate=False)
-        output._representation = numpy.kron(self._representation,
-                                            other._representation)
+        output._representation = numpy.kron(self.representation,
+                                            other.representation)
         return output
 
     def expand(self, other):
@@ -115,8 +147,8 @@ class Unitary(Gate):
         dim = self.dimension + other.dimension
         output = Unitary(
             numpy.empty((dim, dim), dtype='complex'), validate=False)
-        output._representation = numpy.kron(other._representation,
-                                            self._representation)
+        output._representation = numpy.kron(other.representation,
+                                            self.representation)
         return output
 
     def compose(self, other, front=False):
@@ -136,20 +168,20 @@ class Unitary(Gate):
         output = copy.deepcopy(self)
         if front:
             numpy.matmul(
-                other._representation,
-                output._representation,
-                out=output._representation)
+                other.representation,
+                output.representation,
+                out=output.representation)
         else:
             numpy.matmul(
-                output._representation,
-                other._representation,
-                out=output._representation)
+                output.representation,
+                other.representation,
+                out=output.representation)
         return output
 
     def conjugate(self):
         """Return the conjugate of the Unitary."""
         output = copy.deepcopy(self)
-        numpy.conj(output._representation, out=output._representation)
+        numpy.conj(output.representation, out=output.representation)
         return output
 
     def adjoint(self):
@@ -159,11 +191,11 @@ class Unitary(Gate):
     def transpose(self):
         """Return the transpose of the unitary."""
         output = copy.deepcopy(self)
-        output._representation = self._representation.transpose()
+        output._representation = self.representation.transpose()
         return output
 
     @property
-    def _representation(self):
+    def representation(self):
         """
         Get representation. Currently this is just a unitary matrix.
 
@@ -178,7 +210,7 @@ class Unitary(Gate):
         else:
             raise QiskitError("representation not defined")
 
-    @_representation.setter
+    @representation.setter
     def _representation(self, representation):
         """set matrix representation
 
@@ -219,10 +251,10 @@ class Unitary(Gate):
         uni = Unitary(numpy.empty((dim, dim), dtype='complex'), validate=False)
         if n >= 0:
             uni._representation = numpy.linalg.matrix_power(
-                self._representation, n)
+                self.representation, n)
         else:
             uni._representation = numpy.linalg.matrix_power(
-                self._representation.T.conj(), n)
+                self.representation.T.conj(), n)
         return uni
 
     @property
