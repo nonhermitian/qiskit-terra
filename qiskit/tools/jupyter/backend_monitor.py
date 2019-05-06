@@ -15,6 +15,7 @@
 """A module for monitoring backends."""
 
 import math
+import numpy as np
 import datetime
 from IPython.display import display                     # pylint: disable=import-error
 from IPython.core.magic import (line_magic,             # pylint: disable=import-error
@@ -362,11 +363,13 @@ def detailed_map(backend):
     Returns:
         GridBox: Widget holding noise map images.
     """
+    max_qubit_size = 32
+    scale_factor = 4
     props = backend.properties().to_dict()
     config = backend.configuration().to_dict()
     single_gate_errors = [q['parameters'][0]['value']
                           for q in props['gates'][2:3*config['n_qubits']:3]]
-    single_norm = matplotlib.colors.Normalize(
+    single_norm = mpl.colors.Normalize(
         vmin=min(single_gate_errors), vmax=max(single_gate_errors))
     q_colors = [cm.viridis(single_norm(err)) for err in single_gate_errors]
 
@@ -381,9 +384,27 @@ def detailed_map(backend):
         else:
             continue
 
-    cx_norm = matplotlib.colors.Normalize(
+    cx_norm = mpl.colors.Normalize(
         vmin=min(cx_errors), vmax=max(cx_errors))
     line_colors = [cm.viridis(cx_norm(err)) for err in cx_errors]
+    
+    # Set the qubit sizes based on measurement noise
+    meas_err = []
+    for q in props['qubits']:
+        for item in q:
+            if item['name'] == 'readout_error':
+                meas_err.append(item['value'])
+                
+    meas_err = np.asarray(meas_err)
+
+    max_meas_err = max(meas_err)
+    min_meas_err = min(meas_err)
+
+    alpha = 1-(meas_err-min_meas_err)/max_meas_err
+    # remember that marker size is in units of area
+    qubit_size = max_qubit_size/scale_factor+alpha*(max_qubit_size-max_qubit_size/scale_factor)
+    
+    tick_locator = mpl.ticker.MaxNLocator(nbins=5)
 
     single_widget = widgets.Output(layout=widgets.Layout(display='flex-inline', grid_area='left',
                                                          align_items='center'))
@@ -398,9 +419,9 @@ def detailed_map(backend):
     tick_locator = mpl.ticker.MaxNLocator(nbins=5)
     with cmap_widget:
         noise_map = plot_gate_map(backend, qubit_color=q_colors,
-                                  line_color=line_colors,
-                                  qubit_size=28,
-                                  plot_directed=True)
+                              line_color=line_colors,
+                              qubit_size=qubit_size,
+                              plot_directed=True)
         width, height = noise_map.get_size_inches()
 
         noise_map.set_size_inches(1.25*width, 1.25*height)

@@ -14,6 +14,7 @@
 
 """A module for visualizing device coupling maps"""
 
+import numpy as np
 from qiskit.exceptions import QiskitError
 from .matplotlib import HAS_MATPLOTLIB
 if HAS_MATPLOTLIB:
@@ -141,6 +142,11 @@ def plot_gate_map(backend, figsize=None,
     if line_color is None:
         line_color = ['#648fff']*len(cmap)
 
+    # set qubit width to list
+    if isinstance(qubit_size, (int, float, np.int, np.float)):
+        qubit_size = [qubit_size]*config.n_qubits
+
+
     # Add lines for couplings
     for ind, edge in enumerate(cmap):
         is_symmetric = False
@@ -193,8 +199,8 @@ def plot_gate_map(backend, figsize=None,
     # Add circles for qubits
     for var, idx in enumerate(grid_data):
         _idx = [idx[1], -idx[0]]
-        width = _GraphDist(qubit_size, ax, True)
-        height = _GraphDist(qubit_size, ax, False)
+        width = _GraphDist(qubit_size[var], ax, True)
+        height = _GraphDist(qubit_size[var], ax, False)
         ax.add_artist(mpatches.Ellipse(
             _idx, width, height, color=qubit_color[var], zorder=1))
         if label_qubits:
