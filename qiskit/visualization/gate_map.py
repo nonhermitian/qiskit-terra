@@ -61,6 +61,7 @@ class _GraphDist():
 def plot_gate_map(backend, figsize=None,
                   plot_directed=False,
                   label_qubits=True,
+                  qubit_labels=None,
                   qubit_size=24,
                   line_width=4,
                   font_size=12,
@@ -74,12 +75,13 @@ def plot_gate_map(backend, figsize=None,
         figsize (tuple): Output figure size (wxh) in inches.
         plot_directed (bool): Plot directed coupling map.
         label_qubits (bool): Label the qubits.
-        qubit_size (float): Size of qubit marker.
+        qubit_labels (list): Optional set of qubit labels.
+        qubit_size (float or list): Size of qubit marker.
         line_width (float): Width of lines.
         font_size (int): Font size of qubit labels.
         qubit_color (list): A list of colors for the qubits
         line_color (list): A list of colors for each line from coupling_map.
-        font_color (str): The font color for the qubit labels.
+        font_color (str or list): The font colors for the qubit labels.
 
     Returns:
         Figure: A Matplotlib figure instance.
@@ -138,14 +140,26 @@ def plot_gate_map(backend, figsize=None,
 
     # set coloring
     if qubit_color is None:
-        qubit_color = ['#648fff']*config.n_qubits
+        qubit_color = ['#56B4E9']*config.n_qubits
     if line_color is None:
-        line_color = ['#648fff']*len(cmap)
+        line_color = ['#56B4E9']*len(cmap)
+    if isinstance(font_color, str):
+        font_color = [font_color]*config.n_qubits
 
     # set qubit width to list
     if isinstance(qubit_size, (int, float, np.int, np.float)):
         qubit_size = [qubit_size]*config.n_qubits
 
+    # set qubit labels:
+    if isinstance(qubit_labels, list):
+        if not len(qubit_labels) == config.n_qubits:
+            raise QiskitError('Length of qubit_labels must be equal to n_qubits.')
+        if not label_qubits:
+            qubit_labels = ['']*config.n_qubits
+    elif label_qubits:
+        qubit_labels = [str(kk) for kk in range(config.n_qubits)]
+    else:
+        qubit_labels = ['']*config.n_qubits
 
     # Add lines for couplings
     for ind, edge in enumerate(cmap):
@@ -203,11 +217,11 @@ def plot_gate_map(backend, figsize=None,
         height = _GraphDist(qubit_size[var], ax, False)
         ax.add_artist(mpatches.Ellipse(
             _idx, width, height, color=qubit_color[var], zorder=1))
-        if label_qubits:
-            ax.text(*_idx, s=str(var),
-                    horizontalalignment='center',
-                    verticalalignment='center',
-                    color=font_color, size=font_size, weight='bold')
+
+        ax.text(*_idx, s=qubit_labels[var],
+                horizontalalignment='center',
+                verticalalignment='center',
+                color=font_color[var], size=font_size, weight='bold')
     ax.set_xlim([-1, x_max+1])
     ax.set_ylim([-(y_max+1), 1])
     plt.close(fig)
