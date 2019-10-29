@@ -661,7 +661,6 @@ class MatplotlibDrawer:
             layer_width = 1
 
             for op in layer:
-
                 if op.name in _wide_gate:
                     if layer_width < 2:
                         layer_width = 2
@@ -671,7 +670,6 @@ class MatplotlibDrawer:
                                      'noise', 'cswap', 'swap', 'measure'] and len(
                                          op.name) >= 4:
                     box_width = math.ceil(len(op.name) / 6)
-
                     # handle params/subtext longer than op names
                     if op.type == 'op' and hasattr(op.op, 'params'):
                         param = self.param_parse(op.op.params)
@@ -812,7 +810,7 @@ class MatplotlibDrawer:
                     disp = op.name
                     if param:
                         prm = '({})'.format(param)
-                        if len(prm) < 20:
+                        if len(prm) < 24:
                             self._gate(q_xy[0], wide=_iswide, text=disp,
                                        subtext=prm)
                         else:
