@@ -79,7 +79,7 @@ def _load_jobs_data(self, change):
             _build_job_history(tabs, self._backend)
         else:
             import plotly.graph_objects as go
-            out_wid = go.FigureWidget(job_summary(self._backend)._fig)
+            out_wid = job_summary(self._backend)
             box_layout = widgets.Layout(display='flex',
                                         flex_flow='column',
                                         align_items='center',
@@ -226,7 +226,7 @@ tr:nth-child(even) {background-color: #f6f6f6;}
                                      line_width=line_width)
             size = gate_map.get_size_inches()
             size *= 1.33
-            gate_map.set_size_inches(size[0],size[1])
+            gate_map.set_size_inches(size[0], size[1])
             display(gate_map)
         plt.close(gate_map)
 
@@ -474,7 +474,7 @@ def detailed_map(backend):
         return error_widget
     else:
         import plotly.graph_objects as go
-        out_wid = go.FigureWidget(iplot_error_map(backend)._fig)
+        out_wid = iplot_error_map(backend)
 
         box_layout = widgets.Layout(display='flex',
                                     flex_flow='column',
