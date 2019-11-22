@@ -87,6 +87,7 @@ def _load_jobs_data(self, change):
                                        )
             self.children[4].children = [widgets.HBox(children=[out_wid],
                                                       layout=box_layout)]
+            self._did_jobs = True
 
 
 def _backend_monitor(backend):
