@@ -51,25 +51,42 @@ def _load_jobs_data(self, change):
     """Loads backend jobs data
     """
     if change['new'] == 4 and not self._did_jobs:
-        self._did_jobs = True
-        year = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                    align_items='center',
-                                                    min_height='400px'))
+        try:
+            from theia.visualization import job_summary
+        except ImportError:
+            self.children[4].children = [widgets.Tab(layout=widgets.Layout(max_height='620px',
+                                                                           display='flex-inline',
+                                                                           width='100%'))]
+            tabs = self.children[4].children[0]
+            self._did_jobs = True
+            year = widgets.Output(layout=widgets.Layout(display='flex-inline',
+                                                        align_items='center',
+                                                        min_height='400px'))
 
-        month = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                     align_items='center',
-                                                     min_height='400px'))
+            month = widgets.Output(layout=widgets.Layout(display='flex-inline',
+                                                         align_items='center',
+                                                         min_height='400px'))
 
-        week = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                    align_items='center',
-                                                    min_height='400px'))
+            week = widgets.Output(layout=widgets.Layout(display='flex-inline',
+                                                        align_items='center',
+                                                        min_height='400px'))
 
-        self.children[4].children = [year, month, week]
-        self.children[4].set_title(0, 'Year')
-        self.children[4].set_title(1, 'Month')
-        self.children[4].set_title(2, 'Week')
-        self.children[4].selected_index = 1
-        _build_job_history(self.children[4], self._backend)
+            tabs.children = [year, month, week]
+            tabs.set_title(0, 'Year')
+            tabs.set_title(1, 'Month')
+            tabs.set_title(2, 'Week')
+            tabs.selected_index = 1
+            _build_job_history(tabs, self._backend)
+        else:
+            import plotly.graph_objects as go
+            out_wid = go.FigureWidget(job_summary(self._backend)._fig)
+            box_layout = widgets.Layout(display='flex',
+                                        flex_flow='column',
+                                        align_items='center',
+                                        width='100%'
+                                       )
+            self.children[4].children = [widgets.HBox(children=[out_wid],
+                                                      layout=box_layout)]
 
 
 def _backend_monitor(backend):
@@ -94,7 +111,10 @@ def _backend_monitor(backend):
     tab_contents = ['Configuration']
 
     # Empty jobs tab widget
-    jobs = widgets.Tab(layout=widgets.Layout(max_height='620px'))
+    jobs = widgets.HBox(layout=widgets.Layout(max_height='620px',
+                                              display='flex-inline',
+                                              align_items='center',
+                                              width='100%'))
 
     if not backend.configuration().simulator:
         tab_contents.extend(['Qubit Properties', 'Multi-Qubit Gates',
@@ -196,10 +216,13 @@ tr:nth-child(even) {background-color: #f6f6f6;}
     if not config['simulator']:
         with image_widget:
             qubit_size = 28
+            line_width = 5
             if config['n_qubits'] > 32:
                 qubit_size = 24 # the default
+                line_width = 4  # the default
             gate_map = plot_gate_map(backend,
-                                     qubit_size=qubit_size)
+                                     qubit_size=qubit_size,
+                                     line_width=line_width)
             size = gate_map.get_size_inches()
             size *= 1.33
             gate_map.set_size_inches(size[0],size[1])
@@ -456,40 +479,9 @@ def detailed_map(backend):
                                     flex_flow='column',
                                     align_items='center',
                                    )
-        box = widgets.HBox(children=[out_wid],layout=box_layout)
-        return box
-
-
-def job_history(backend):
-    """Widget for displaying job history
-
-    Args:
-     backend (IBMQBackend | FakeBackend): The backend.
-
-    Returns:
-        Tab: A tab widget for history images.
-    """
-    year = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                align_items='center',
-                                                min_height='400px'))
-
-    month = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                 align_items='center',
-                                                 min_height='400px'))
-
-    week = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                align_items='center',
-                                                min_height='400px'))
-
-    tabs = widgets.Tab(layout=widgets.Layout(max_height='620px'))
-    tabs.children = [year, month, week]
-    tabs.set_title(0, 'Year')
-    tabs.set_title(1, 'Month')
-    tabs.set_title(2, 'Week')
-    tabs.selected_index = 1
-
-    _build_job_history(tabs, backend)
-    return tabs
+        error_widget = widgets.HBox(children=[out_wid],
+                                    layout=box_layout)
+    return error_widget
 
 
 def _build_job_history(tabs, backend):
