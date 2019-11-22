@@ -189,13 +189,20 @@ tr:nth-child(even) {background-color: #f6f6f6;}
 
     image_widget = widgets.Output(
         layout=widgets.Layout(display='flex-inline', grid_area='right',
-                              padding='10px 10px 10px 10px',
-                              width='auto', max_height='325px',
+                              margin='0px 0px 0px 0px',
+                              width='auto', max_height='400px',
                               align_items='center'))
 
     if not config['simulator']:
         with image_widget:
-            gate_map = plot_gate_map(backend)
+            qubit_size = 28
+            if config['n_qubits'] > 32:
+                qubit_size = 24 # the default
+            gate_map = plot_gate_map(backend,
+                                     qubit_size=qubit_size)
+            size = gate_map.get_size_inches()
+            size *= 1.33
+            gate_map.set_size_inches(size[0],size[1])
             display(gate_map)
         plt.close(gate_map)
 
@@ -228,7 +235,7 @@ tr:nth-child(even) {background-color: #f6f6f6;}
     grid = widgets.GridBox(children=[upper_table, image_widget, lower_table],
                            layout=widgets.Layout(
                                grid_template_rows='auto auto',
-                               grid_template_columns='31% 23% 23% 23%',
+                               grid_template_columns='33% 22% 21% 21%',
                                grid_template_areas='''
                                "left right right right"
                                "bottom bottom bottom bottom"
@@ -433,11 +440,24 @@ def detailed_map(backend):
     Returns:
         GridBox: Widget holding noise map images.
     """
-    error_widget = widgets.Output(layout=widgets.Layout(display='flex-inline',
-                                                        align_items='center'))
-    with error_widget:
-        display(plot_error_map(backend, figsize=(11, 9), show_title=False))
-    return error_widget
+    try:
+        from theia.visualization import iplot_error_map
+    except ImportError:
+        error_widget = widgets.Output(layout=widgets.Layout(display='flex-inline',
+                                                            align_items='center'))
+        with error_widget:
+            display(plot_error_map(backend, figsize=(11, 9), show_title=False))
+        return error_widget
+    else:
+        import plotly.graph_objects as go
+        out_wid = go.FigureWidget(iplot_error_map(backend)._fig)
+
+        box_layout = widgets.Layout(display='flex',
+                                    flex_flow='column',
+                                    align_items='center',
+                                   )
+        box = widgets.HBox(children=[out_wid],layout=box_layout)
+        return box
 
 
 def job_history(backend):
