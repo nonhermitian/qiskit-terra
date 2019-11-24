@@ -83,7 +83,7 @@ def _load_jobs_data(self, change):
                                         flex_flow='column',
                                         align_items='center',
                                         width='100%'
-                                       )
+                                        )
             self.children[4].children = [widgets.HBox(children=[out_wid],
                                                       layout=box_layout)]
             self._did_jobs = True
@@ -219,8 +219,8 @@ tr:nth-child(even) {background-color: #f6f6f6;}
                 qubit_size = 28
                 line_width = 5
                 if config['n_qubits'] > 32:
-                    qubit_size = 24 # the default
-                    line_width = 4  # the default
+                    qubit_size = 24  # the default
+                    line_width = 4   # the default
                 gate_map = plot_gate_map(backend,
                                          qubit_size=qubit_size,
                                          line_width=line_width)
@@ -488,8 +488,7 @@ def detailed_map(backend):
 
         box_layout = widgets.Layout(display='flex',
                                     flex_flow='column',
-                                    align_items='center',
-                                   )
+                                    align_items='center')
         error_widget = widgets.HBox(children=[out_wid],
                                     layout=box_layout)
     return error_widget
