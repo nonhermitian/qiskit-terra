@@ -11,7 +11,7 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name, import-outside-toplevel
 
 """A module for monitoring backends."""
 
@@ -78,7 +78,6 @@ def _load_jobs_data(self, change):
             tabs.selected_index = 1
             _build_job_history(tabs, self._backend)
         else:
-            import plotly.graph_objects as go
             out_wid = job_summary(self._backend)
             box_layout = widgets.Layout(display='flex',
                                         flex_flow='column',
@@ -207,28 +206,40 @@ tr:nth-child(even) {background-color: #f6f6f6;}
 
     upper_table = widgets.HTMLMath(
         value=upper_str, layout=widgets.Layout(width='100%', grid_area='left'))
-
-    image_widget = widgets.Output(
-        layout=widgets.Layout(display='flex-inline', grid_area='right',
-                              margin='0px 0px 0px 0px',
-                              width='auto', max_height='400px',
-                              align_items='center'))
-
-    if not config['simulator']:
-        with image_widget:
-            qubit_size = 28
-            line_width = 5
-            if config['n_qubits'] > 32:
-                qubit_size = 24 # the default
-                line_width = 4  # the default
-            gate_map = plot_gate_map(backend,
-                                     qubit_size=qubit_size,
-                                     line_width=line_width)
-            size = gate_map.get_size_inches()
-            size *= 1.33
-            gate_map.set_size_inches(size[0], size[1])
-            display(gate_map)
-        plt.close(gate_map)
+    try:
+        from theia.visualization import iplot_gate_map
+    except ImportError:
+        image_widget = widgets.Output(layout=widgets.Layout(display='flex-inline',
+                                                            grid_area='right',
+                                                            margin='0px 0px 0px 0px',
+                                                            width='auto', max_height='400px',
+                                                            align_items='center'))
+        if not config['simulator']:
+            with image_widget:
+                qubit_size = 28
+                line_width = 5
+                if config['n_qubits'] > 32:
+                    qubit_size = 24 # the default
+                    line_width = 4  # the default
+                gate_map = plot_gate_map(backend,
+                                         qubit_size=qubit_size,
+                                         line_width=line_width)
+                size = gate_map.get_size_inches()
+                size *= 1.33
+                gate_map.set_size_inches(size[0], size[1])
+                display(gate_map)
+            plt.close(gate_map)
+    else:
+        img_child = []
+        if not config['simulator']:
+            img_child = [iplot_gate_map(backend)]
+        image_widget = widgets.HBox(children=img_child,
+                                    layout=widgets.Layout(grid_area='right',
+                                                          max_height='400px',
+                                                          margin='0px 0px 0px 0px',
+                                                          display='flex-inline',
+                                                          align_items='center',
+                                                          width='auto'))
 
     lower_str = "<table>"
     lower_str += """<style>
@@ -259,9 +270,9 @@ tr:nth-child(even) {background-color: #f6f6f6;}
     grid = widgets.GridBox(children=[upper_table, image_widget, lower_table],
                            layout=widgets.Layout(
                                grid_template_rows='auto auto',
-                               grid_template_columns='33% 22% 21% 21%',
+                               grid_template_columns='33% 11% 28% 28%',
                                grid_template_areas='''
-                               "left right right right"
+                               "left . right right"
                                "bottom bottom bottom bottom"
                                ''',
                                grid_gap='0px 0px'))
@@ -473,7 +484,6 @@ def detailed_map(backend):
             display(plot_error_map(backend, figsize=(11, 9), show_title=False))
         return error_widget
     else:
-        import plotly.graph_objects as go
         out_wid = iplot_error_map(backend)
 
         box_layout = widgets.Layout(display='flex',
