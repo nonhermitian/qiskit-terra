@@ -61,5 +61,6 @@ class TestGateMap(QiskitVisualizationTestCase):
         self.assertImagesAreEqual(filename, img_ref, 0.1)
         os.remove(filename)
 
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
