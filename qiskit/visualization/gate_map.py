@@ -32,9 +32,9 @@ if HAS_MATPLOTLIB:
 def plot_gate_map(backend, figsize=None,
                   plot_directed=False,
                   label_qubits=True,
-                  qubit_size=24,
+                  qubit_size=None,
                   line_width=4,
-                  font_size=12,
+                  font_size=None,
                   qubit_color=None,
                   qubit_labels=None,
                   line_color=None,
@@ -137,6 +137,15 @@ def plot_gate_map(backend, figsize=None,
     config = backend.configuration()
     n_qubits = config.n_qubits
     cmap = config.coupling_map
+
+    if font_size is None:
+        font_size = 12
+
+    if qubit_size is None:
+        qubit_size = 24
+    if n_qubits > 20:
+        qubit_size = 28
+        font_size = 10
 
     if qubit_labels is None:
         qubit_labels = list(range(n_qubits))
