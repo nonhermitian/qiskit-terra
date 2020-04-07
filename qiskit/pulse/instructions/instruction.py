@@ -28,15 +28,15 @@ import warnings
 from abc import ABC
 
 from typing import Tuple, List, Iterable, Callable, Optional, Union
+import numpy as np
 
-from qiskit.pulse.channels import Channel
-from qiskit.pulse.interfaces import ScheduleComponent
-from qiskit.pulse.schedule import Schedule
-from qiskit.pulse.timeslots import Interval, Timeslot, TimeslotCollection
+from ..channels import Channel
+from ..interfaces import ScheduleComponent
+from ..schedule import Schedule
+from ..timeslots import Interval, Timeslot, TimeslotCollection
+from .. import commands  # pylint: disable=unused-import
 
 # pylint: disable=missing-return-doc
-
-# TODO: After migrating instruction implementations, add property+abstractmethod operands
 
 
 class Instruction(ScheduleComponent, ABC):
@@ -44,28 +44,33 @@ class Instruction(ScheduleComponent, ABC):
     channels.
     """
 
-    def __init__(self, duration: Union['Command', int],
-                 *channels: Channel,
+    def __init__(self,
+                 operands: Tuple,
+                 duration: Union['commands.Command', int],
+                 channels: Tuple[Channel],
                  name: Optional[str] = None):
         """Instruction initializer.
 
         Args:
+            operands: The argument list.
             duration: Length of time taken by the instruction in terms of dt.
-            *channels: List of pulse channels that this instruction operates on.
-            name: Display name for this instruction.
+                      Deprecated: the first argument used to be the Command.
+            channels: Tuple of pulse channels that this instruction operates on.
+            name: Optional display name for this instruction.
         """
-        self._name = name
-
         self._command = None
-        if not isinstance(duration, int):
-            # TODO: Add deprecation warning once all instructions are migrated
+        if not isinstance(duration, (int, np.integer)):
+            warnings.warn("Commands have been deprecated. Use `qiskit.pulse.instructions` instead.",
+                          DeprecationWarning)
             self._command = duration
             if name is None:
-                self._name = self.command.name
+                name = self.command.name
             duration = self.command.duration
-
+        self._duration = duration
         self._timeslots = TimeslotCollection(*(Timeslot(Interval(0, duration), channel)
                                                for channel in channels if channel is not None))
+        self._operands = operands
+        self._name = name
 
     @property
     def name(self) -> str:
@@ -73,9 +78,24 @@ class Instruction(ScheduleComponent, ABC):
         return self._name
 
     @property
-    def command(self) -> 'Command':
-        """The associated command."""
+    def command(self) -> 'commands.Command':
+        """The associated command. Commands are deprecated, so this method will be deprecated
+        shortly.
+        """
         return self._command
+
+    @property
+    def id(self) -> int:  # pylint: disable=invalid-name
+        """Unique identifier for this instruction."""
+        return id(self)
+
+    @property
+    def operands(self) -> Tuple:
+        """Return instruction operands."""
+        if self.command is not None:
+            warnings.warn("This is a deprecated instruction with a ``Command``, and it does "
+                          "not populate its `operands`.")
+        return self._operands
 
     @property
     def channels(self) -> Tuple[Channel]:
@@ -100,7 +120,7 @@ class Instruction(ScheduleComponent, ABC):
     @property
     def duration(self) -> int:
         """Duration of this instruction."""
-        return self.timeslots.duration
+        return self._duration
 
     @property
     def _children(self) -> Tuple[ScheduleComponent]:
@@ -152,18 +172,20 @@ class Instruction(ScheduleComponent, ABC):
         """Return itself as already single instruction."""
         return self
 
-    def union(self, *schedules: List[ScheduleComponent], name: Optional[str] = None) -> 'Schedule':
+    def union(self, *schedules: List[ScheduleComponent], name: Optional[str] = None) -> Schedule:
         """Return a new schedule which is the union of `self` and `schedule`.
 
         Args:
             *schedules: Schedules to be take the union with this Instruction.
             name: Name of the new schedule. Defaults to name of self
         """
+        warnings.warn("The union method is deprecated. Use insert with start_time=0.",
+                      DeprecationWarning)
         if name is None:
             name = self.name
         return Schedule(self, *schedules, name=name)
 
-    def shift(self: ScheduleComponent, time: int, name: Optional[str] = None) -> 'Schedule':
+    def shift(self: ScheduleComponent, time: int, name: Optional[str] = None) -> Schedule:
         """Return a new schedule shifted forward by `time`.
 
         Args:
@@ -175,7 +197,7 @@ class Instruction(ScheduleComponent, ABC):
         return Schedule((time, self), name=name)
 
     def insert(self, start_time: int, schedule: ScheduleComponent,
-               name: Optional[str] = None) -> 'Schedule':
+               name: Optional[str] = None) -> Schedule:
         """Return a new :class:`~qiskit.pulse.Schedule` with ``schedule`` inserted within
         ``self`` at ``start_time``.
 
@@ -184,10 +206,12 @@ class Instruction(ScheduleComponent, ABC):
             schedule: Schedule to insert
             name: Name of the new schedule. Defaults to name of self
         """
-        return self.union((start_time, schedule), name=name)
+        if name is None:
+            name = self.name
+        return Schedule(self, (start_time, schedule), name=name)
 
     def append(self, schedule: ScheduleComponent,
-               name: Optional[str] = None) -> 'Schedule':
+               name: Optional[str] = None) -> Schedule:
         """Return a new :class:`~qiskit.pulse.Schedule` with ``schedule`` inserted at the
         maximum time over all channels shared between ``self`` and ``schedule``.
 
@@ -199,7 +223,7 @@ class Instruction(ScheduleComponent, ABC):
         time = self.ch_stop_time(*common_channels)
         return self.insert(time, schedule, name=name)
 
-    def draw(self, dt: float = 1, style: Optional['SchedStyle'] = None,
+    def draw(self, dt: float = 1, style=None,
              filename: Optional[str] = None, interp_method: Optional[Callable] = None,
              scale: float = 1, channels_to_plot: Optional[List[Channel]] = None,
              plot_all: bool = False, plot_range: Optional[Tuple[float]] = None,
@@ -211,7 +235,7 @@ class Instruction(ScheduleComponent, ABC):
 
         Args:
             dt: Time interval of samples
-            style: A style sheet to configure plot appearance
+            style (Optional[SchedStyle]): A style sheet to configure plot appearance
             filename: Name required to save pulse image
             interp_method: A function for interpolation
             scale: Relative visual scaling of waveform amplitudes
@@ -250,7 +274,7 @@ class Instruction(ScheduleComponent, ABC):
                                           label=label, framechange=framechange,
                                           channels=channels)
 
-    def __eq__(self, other: 'Instruction'):
+    def __eq__(self, other: 'Instruction') -> bool:
         """Check if this Instruction is equal to the `other` instruction.
 
         Equality is determined by the instruction sharing the same operands and channels.
@@ -258,29 +282,30 @@ class Instruction(ScheduleComponent, ABC):
         if self.command:
             # Backwards compatibility for Instructions with Commands
             return (self.command == other.command) and (set(self.channels) == set(other.channels))
-        return ((self.duration == other.duration) and
-                (set(self.channels) == set(other.channels)) and
-                (isinstance(other, type(self))))
+        return isinstance(other, type(self)) and self.operands == other.operands
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         if self.command:
             # Backwards compatibility for Instructions with Commands
-            return hash((hash(tuple(self.command)), self.channels.__hash__()))
-        return hash((hash(tuple(self.duration)), self.channels.__hash__()))
+            return hash(((tuple(self.command)), self.channels.__hash__()))
+        return hash((type(self), self.operands, self.name))
 
-    def __add__(self, other: ScheduleComponent) -> 'Schedule':
+    def __add__(self, other: ScheduleComponent) -> Schedule:
         """Return a new schedule with `other` inserted within `self` at `start_time`."""
         return self.append(other)
 
-    def __or__(self, other: ScheduleComponent) -> 'Schedule':
+    def __or__(self, other: ScheduleComponent) -> Schedule:
         """Return a new schedule which is the union of `self` and `other`."""
-        return self.union(other)
+        return self.insert(0, other)
 
-    def __lshift__(self, time: int) -> 'Schedule':
+    def __lshift__(self, time: int) -> Schedule:
         """Return a new schedule which is shifted forward by `time`."""
         return self.shift(time)
 
-    def __repr__(self):
-        return "%s(%s, %s)" % (self.__class__.__name__,
-                               self.command if self.command else self.duration,
-                               ', '.join(str(ch) for ch in self.channels))
+    def __repr__(self) -> str:
+        if self.operands:
+            operands = ', '.join(str(op) for op in self.operands)
+        else:
+            operands = "{}, {}".format(self.command, ', '.join(str(ch) for ch in self.channels))
+        return "{}({}{})".format(self.__class__.__name__, operands,
+                                 ", name='{}'".format(self.name) if self.name else "")
