@@ -143,7 +143,7 @@ def plot_gate_map(backend, figsize=None,
                     [9, 2], [9, 6]]
 
     config = backend.configuration()
-    num_qubits = config.n_qubits
+    n_qubits = config.n_qubits
     cmap = config.coupling_map
 
     if font_size is None:
