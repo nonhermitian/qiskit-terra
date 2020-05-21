@@ -143,7 +143,7 @@ def plot_gate_map(backend, figsize=None,
                     [9, 2], [9, 6]]
 
     config = backend.configuration()
-    n_qubits = config.n_qubits
+    num_qubits = config.n_qubits
     cmap = config.coupling_map
 
     if font_size is None:
@@ -151,7 +151,7 @@ def plot_gate_map(backend, figsize=None,
 
     if qubit_size is None:
         qubit_size = 24
-    if n_qubits > 20:
+    if num_qubits > 20:
         qubit_size = 28
         font_size = 10
 
@@ -470,7 +470,7 @@ def plot_error_map(backend, figsize=(12, 9), show_title=True):
         bright_ax = plt.subplot(grid_spec[-1, 7:])
 
     qubit_size = 28
-    if n_qubits <= 5:
+    if num_qubits <= 5:
         qubit_size = 20
     plot_gate_map(backend, qubit_color=q_colors,
                   line_color=line_colors,
