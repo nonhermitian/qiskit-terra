@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -33,64 +31,14 @@ import scipy.linalg as la
 
 from qiskit.circuit.quantumregister import QuantumRegister
 from qiskit.circuit.quantumcircuit import QuantumCircuit
-from qiskit.circuit.library.standard_gates.u3 import U3Gate
 from qiskit.circuit.library.standard_gates.x import CXGate
 from qiskit.exceptions import QiskitError
+from qiskit.quantum_info.operators import Operator
 from qiskit.quantum_info.operators.predicates import is_unitary_matrix
 from qiskit.quantum_info.synthesis.weyl import weyl_coordinates
 from qiskit.quantum_info.synthesis.one_qubit_decompose import OneQubitEulerDecomposer
 
 _CUTOFF_PRECISION = 1e-12
-_DECOMPOSER1Q = OneQubitEulerDecomposer('U3')
-
-
-def euler_angles_1q(unitary_matrix):
-    """DEPRECATED: Compute Euler angles for a single-qubit gate.
-
-    Find angles (theta, phi, lambda) such that
-    unitary_matrix = phase * Rz(phi) * Ry(theta) * Rz(lambda)
-
-    Args:
-        unitary_matrix (ndarray): 2x2 unitary matrix
-
-    Returns:
-        tuple: (theta, phi, lambda) Euler angles of SU(2)
-
-    Raises:
-        QiskitError: if unitary_matrix not 2x2, or failure
-    """
-    warnings.warn("euler_angles_q1` is deprecated. "
-                  "Use `synthesis.OneQubitEulerDecomposer().angles instead.",
-                  DeprecationWarning)
-    if unitary_matrix.shape != (2, 2):
-        raise QiskitError("euler_angles_1q: expected 2x2 matrix")
-    phase = la.det(unitary_matrix)**(-1.0/2.0)
-    U = phase * unitary_matrix  # U in SU(2)
-    # OpenQASM SU(2) parameterization:
-    # U[0, 0] = exp(-i(phi+lambda)/2) * cos(theta/2)
-    # U[0, 1] = -exp(-i(phi-lambda)/2) * sin(theta/2)
-    # U[1, 0] = exp(i(phi-lambda)/2) * sin(theta/2)
-    # U[1, 1] = exp(i(phi+lambda)/2) * cos(theta/2)
-    theta = 2 * math.atan2(abs(U[1, 0]), abs(U[0, 0]))
-
-    # Find phi and lambda
-    phiplambda = 2 * np.angle(U[1, 1])
-    phimlambda = 2 * np.angle(U[1, 0])
-    phi = (phiplambda + phimlambda) / 2.0
-    lamb = (phiplambda - phimlambda) / 2.0
-
-    # Check the solution
-    Rzphi = np.array([[np.exp(-1j*phi/2.0), 0],
-                      [0, np.exp(1j*phi/2.0)]], dtype=complex)
-    Rytheta = np.array([[np.cos(theta/2.0), -np.sin(theta/2.0)],
-                        [np.sin(theta/2.0), np.cos(theta/2.0)]], dtype=complex)
-    Rzlambda = np.array([[np.exp(-1j*lamb/2.0), 0],
-                         [0, np.exp(1j*lamb/2.0)]], dtype=complex)
-    V = np.dot(Rzphi, np.dot(Rytheta, Rzlambda))
-    if la.norm(V - U) > _CUTOFF_PRECISION:
-        raise QiskitError("compiling.euler_angles_1q incorrect result norm(V-U)={}".
-                          format(la.norm(V-U)))
-    return theta, phi, lamb
 
 
 def decompose_two_qubit_product_gate(special_unitary_matrix):
@@ -144,7 +92,7 @@ class TwoQubitWeylDecomposition:
     𝜋/4 ≥ a ≥ b ≥ |c|
     """
 
-    def __init__(self, unitary_matrix):
+    def __init__(self, unitary_matrix, eps=1e-15):
         """The flip into the Weyl Chamber is described in B. Kraus and J. I. Cirac,
         Phys. Rev. A 63, 062309 (2001).
 
@@ -163,6 +111,8 @@ class TwoQubitWeylDecomposition:
 
         Up = _Bd.dot(U).dot(_B)
         M2 = Up.T.dot(Up)
+        M2.real[abs(M2.real) < eps] = 0.0
+        M2.imag[abs(M2.imag) < eps] = 0.0
 
         # M2 is a symmetric complex matrix. We need to decompose it as M2 = P D P^T where
         # P ∈ SO(4), D is diagonal with unit-magnitude elements.
@@ -170,7 +120,7 @@ class TwoQubitWeylDecomposition:
         for i in range(100):  # FIXME: this randomized algorithm is horrendous
             state = np.random.default_rng(i)
             M2real = state.normal()*M2.real + state.normal()*M2.imag
-            _, P = la.eigh(M2real)
+            _, P = np.linalg.eigh(M2real)
             D = P.T.dot(M2).dot(P).diagonal()
             if np.allclose(P.dot(np.diag(D)).dot(P.T), M2, rtol=1.0e-13, atol=1.0e-13):
                 break
@@ -195,7 +145,11 @@ class TwoQubitWeylDecomposition:
 
         # Find K1, K2 so that U = K1.A.K2, with K being product of single-qubit unitaries
         K1 = _B.dot(Up).dot(P).dot(np.diag(np.exp(1j*d))).dot(_Bd)
+        K1.real[abs(K1.real) < eps] = 0.0
+        K1.imag[abs(K1.imag) < eps] = 0.0
         K2 = _B.dot(P.T).dot(_Bd)
+        K2.real[abs(K2.real) < eps] = 0.0
+        K2.imag[abs(K2.imag) < eps] = 0.0
 
         K1l, K1r = decompose_two_qubit_product_gate(K1)
         K2l, K2r = decompose_two_qubit_product_gate(K2)
@@ -279,12 +233,24 @@ def rz_array(theta):
 class TwoQubitBasisDecomposer():
     """A class for decomposing 2-qubit unitaries into minimal number of uses of a 2-qubit
     basis gate.
+
+    Args:
+        gate (Gate): Two-qubit gate to be used in the KAK decomposition.
+        basis_fidelity (float): Fidelity to be assumed for applications of KAK Gate. Default 1.0.
+        euler_basis (str): Basis string to be provided to OneQubitEulerDecomposer for 1Q synthesis.
+            Valid options are ['ZYZ', 'ZXZ', 'XYX', 'U', 'U3', 'U1X', 'PSX', 'ZSX', 'RR'].
+            Default 'U3'.
     """
 
-    def __init__(self, gate, basis_fidelity=1.0):
+    def __init__(self, gate, basis_fidelity=1.0, euler_basis=None):
         self.gate = gate
         self.basis_fidelity = basis_fidelity
-        basis = self.basis = TwoQubitWeylDecomposition(gate.to_matrix())
+
+        basis = self.basis = TwoQubitWeylDecomposition(Operator(gate).data)
+        if euler_basis is not None:
+            self._decomposer1q = OneQubitEulerDecomposer(euler_basis)
+        else:
+            self._decomposer1q = OneQubitEulerDecomposer('U3')
 
         # FIXME: find good tolerances
         self.is_supercontrolled = np.isclose(basis.a, np.pi/4) and np.isclose(basis.c, 0.)
@@ -366,7 +332,7 @@ class TwoQubitBasisDecomposer():
                 4]
 
     @staticmethod
-    def decomp0(target):
+    def decomp0(target, eps=1e-15):
         """Decompose target ~Ud(x, y, z) with 0 uses of the basis gate.
         Result Ur has trace:
         :math:`|Tr(Ur.Utarget^dag)| = 4|(cos(x)cos(y)cos(z)+ j sin(x)sin(y)sin(z)|`,
@@ -374,7 +340,10 @@ class TwoQubitBasisDecomposer():
 
         U0l = target.K1l.dot(target.K2l)
         U0r = target.K1r.dot(target.K2r)
-
+        U0l.real[abs(U0l.real) < eps] = 0.0
+        U0l.imag[abs(U0l.imag) < eps] = 0.0
+        U0r.real[abs(U0r.real) < eps] = 0.0
+        U0r.imag[abs(U0r.imag) < eps] = 0.0
         return U0r, U0l
 
     def decomp1(self, target):
@@ -462,16 +431,16 @@ class TwoQubitBasisDecomposer():
 
         best_nbasis = np.argmax(expected_fidelities)
         decomposition = self.decomposition_fns[best_nbasis](target_decomposed)
-        decomposition_angles = [_DECOMPOSER1Q.angles(x) for x in decomposition]
+        decomposition_euler = [self._decomposer1q(x) for x in decomposition]
 
         q = QuantumRegister(2)
         return_circuit = QuantumCircuit(q)
         for i in range(best_nbasis):
-            return_circuit.append(U3Gate(*decomposition_angles[2*i]), [q[0]])
-            return_circuit.append(U3Gate(*decomposition_angles[2*i+1]), [q[1]])
+            return_circuit.compose(decomposition_euler[2*i], [q[0]], inplace=True)
+            return_circuit.compose(decomposition_euler[2*i+1], [q[1]], inplace=True)
             return_circuit.append(self.gate, [q[0], q[1]])
-        return_circuit.append(U3Gate(*decomposition_angles[2*best_nbasis]), [q[0]])
-        return_circuit.append(U3Gate(*decomposition_angles[2*best_nbasis+1]), [q[1]])
+        return_circuit.compose(decomposition_euler[2*best_nbasis], [q[0]], inplace=True)
+        return_circuit.compose(decomposition_euler[2*best_nbasis+1], [q[1]], inplace=True)
 
         return return_circuit
 

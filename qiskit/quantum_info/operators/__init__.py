@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -16,12 +14,11 @@
 
 from .operator import Operator
 from .scalar_op import ScalarOp
-from .pauli import Pauli, pauli_group
 from .channel import Choi, SuperOp, Kraus, Stinespring, Chi, PTM
-from .quaternion import Quaternion
 from .measures import (process_fidelity,
                        average_gate_fidelity,
                        gate_error,
                        diamond_norm)
-from .symplectic import (Clifford, SparsePauliOp, PauliTable, StabilizerTable)
+from .symplectic import (Clifford, Pauli, SparsePauliOp, PauliTable, StabilizerTable)
 from .symplectic import pauli_basis
+from .pauli import pauli_group

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2020.
@@ -54,16 +52,23 @@ class DCXGate(Gate):
         """
         gate dcx a, b { cx a, b; cx a, b; }
         """
+        # pylint: disable=cyclic-import
+        from qiskit.circuit.quantumcircuit import QuantumCircuit
         from .x import CXGate
         q = QuantumRegister(2, 'q')
-        self.definition = [
+        qc = QuantumCircuit(q, name=self.name)
+        rules = [
             (CXGate(), [q[0], q[1]], []),
             (CXGate(), [q[1], q[0]], [])
         ]
+        for instr, qargs, cargs in rules:
+            qc._append(instr, qargs, cargs)
 
-    def to_matrix(self):
+        self.definition = qc
+
+    def __array__(self, dtype=None):
         """Return a numpy.array for the DCX gate."""
         return np.array([[1, 0, 0, 0],
                          [0, 0, 0, 1],
                          [0, 1, 0, 0],
-                         [0, 0, 1, 0]], dtype=complex)
+                         [0, 0, 1, 0]], dtype=dtype)

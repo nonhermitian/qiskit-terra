@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -185,6 +183,8 @@ def format_statevector(vec, decimals=None):
         list[complex]: a list of python complex numbers.
     """
     if isinstance(vec, np.ndarray):
+        if decimals:
+            return np.around(vec, decimals=decimals)
         return vec
     num_basis = len(vec)
     if vec and isinstance(vec[0], complex):
@@ -193,6 +193,7 @@ def format_statevector(vec, decimals=None):
         vec_complex = np.zeros(num_basis, dtype=complex)
         for i in range(num_basis):
             vec_complex[i] = vec[i][0] + 1j * vec[i][1]
+
     if decimals:
         vec_complex = np.around(vec_complex, decimals=decimals)
     return vec_complex
@@ -210,6 +211,8 @@ def format_unitary(mat, decimals=None):
         list[list[complex]]: a matrix of complex numbers
     """
     if isinstance(mat, np.ndarray):
+        if decimals:
+            return np.around(mat, decimals=decimals)
         return mat
     num_basis = len(mat)
     mat_complex = np.zeros((num_basis, num_basis), dtype=complex)

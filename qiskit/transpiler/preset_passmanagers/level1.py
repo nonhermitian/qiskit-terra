@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -21,6 +19,8 @@ from qiskit.transpiler.passmanager_config import PassManagerConfig
 from qiskit.transpiler.passmanager import PassManager
 
 from qiskit.transpiler.passes import Unroller
+from qiskit.transpiler.passes import BasisTranslator
+from qiskit.transpiler.passes import UnrollCustomDefinitions
 from qiskit.transpiler.passes import Unroll3qOrMore
 from qiskit.transpiler.passes import CXCancellation
 from qiskit.transpiler.passes import CheckMap
@@ -29,19 +29,29 @@ from qiskit.transpiler.passes import SetLayout
 from qiskit.transpiler.passes import TrivialLayout
 from qiskit.transpiler.passes import DenseLayout
 from qiskit.transpiler.passes import NoiseAdaptiveLayout
+from qiskit.transpiler.passes import SabreLayout
 from qiskit.transpiler.passes import BarrierBeforeFinalMeasurements
 from qiskit.transpiler.passes import BasicSwap
 from qiskit.transpiler.passes import LookaheadSwap
 from qiskit.transpiler.passes import StochasticSwap
+from qiskit.transpiler.passes import SabreSwap
 from qiskit.transpiler.passes import FullAncillaAllocation
 from qiskit.transpiler.passes import EnlargeWithAncilla
 from qiskit.transpiler.passes import FixedPoint
 from qiskit.transpiler.passes import Depth
 from qiskit.transpiler.passes import RemoveResetInZeroState
 from qiskit.transpiler.passes import Optimize1qGates
+from qiskit.transpiler.passes import Optimize1qGatesDecomposition
 from qiskit.transpiler.passes import ApplyLayout
 from qiskit.transpiler.passes import CheckCXDirection
 from qiskit.transpiler.passes import Layout2qDistance
+from qiskit.transpiler.passes import Collect2qBlocks
+from qiskit.transpiler.passes import ConsolidateBlocks
+from qiskit.transpiler.passes import UnitarySynthesis
+from qiskit.transpiler.passes import TimeUnitAnalysis
+from qiskit.transpiler.passes import ALAPSchedule
+from qiskit.transpiler.passes import ASAPSchedule
+from qiskit.transpiler.passes import Error
 
 from qiskit.transpiler import TranspilerError
 
@@ -76,6 +86,9 @@ def level_1_pass_manager(pass_manager_config: PassManagerConfig) -> PassManager:
     initial_layout = pass_manager_config.initial_layout
     layout_method = pass_manager_config.layout_method or 'dense'
     routing_method = pass_manager_config.routing_method or 'stochastic'
+    translation_method = pass_manager_config.translation_method or 'translator'
+    scheduling_method = pass_manager_config.scheduling_method
+    instruction_durations = pass_manager_config.instruction_durations
     seed_transpiler = pass_manager_config.seed_transpiler
     backend_properties = pass_manager_config.backend_properties
 
@@ -96,6 +109,8 @@ def level_1_pass_manager(pass_manager_config: PassManagerConfig) -> PassManager:
         _improve_layout = DenseLayout(coupling_map, backend_properties)
     elif layout_method == 'noise_adaptive':
         _improve_layout = NoiseAdaptiveLayout(backend_properties)
+    elif layout_method == 'sabre':
+        _improve_layout = SabreLayout(coupling_map, max_iterations=2, seed=seed_transpiler)
     else:
         raise TranspilerError("Invalid layout method %s." % layout_method)
 
@@ -122,11 +137,30 @@ def level_1_pass_manager(pass_manager_config: PassManagerConfig) -> PassManager:
         _swap += [StochasticSwap(coupling_map, trials=20, seed=seed_transpiler)]
     elif routing_method == 'lookahead':
         _swap += [LookaheadSwap(coupling_map, search_depth=4, search_width=4)]
+    elif routing_method == 'sabre':
+        _swap += [SabreSwap(coupling_map, heuristic='lookahead', seed=seed_transpiler)]
+    elif routing_method == 'none':
+        _swap += [Error(msg='No routing method selected, but circuit is not routed to device. '
+                            'CheckMap Error: {check_map_msg}', action='raise')]
     else:
         raise TranspilerError("Invalid routing method %s." % routing_method)
 
     # 6. Unroll to the basis
-    _unroll = Unroller(basis_gates)
+    if translation_method == 'unroller':
+        _unroll = [Unroller(basis_gates)]
+    elif translation_method == 'translator':
+        from qiskit.circuit.equivalence_library import SessionEquivalenceLibrary as sel
+        _unroll = [UnrollCustomDefinitions(sel, basis_gates),
+                   BasisTranslator(sel, basis_gates)]
+    elif translation_method == 'synthesis':
+        _unroll = [
+            Unroll3qOrMore(),
+            Collect2qBlocks(),
+            ConsolidateBlocks(basis_gates=basis_gates),
+            UnitarySynthesis(basis_gates),
+        ]
+    else:
+        raise TranspilerError("Invalid translation method %s." % translation_method)
 
     # 7. Fix any bad CX directions
     _direction_check = [CheckCXDirection(coupling_map)]
@@ -145,11 +179,25 @@ def level_1_pass_manager(pass_manager_config: PassManagerConfig) -> PassManager:
     def _opt_control(property_set):
         return not property_set['depth_fixed_point']
 
-    _opt = [Optimize1qGates(basis_gates), CXCancellation()]
+    if basis_gates and ('u1' in basis_gates or 'u2' in basis_gates or
+                        'u3' in basis_gates):
+        _opt = [Optimize1qGates(basis_gates), CXCancellation()]
+    else:
+        _opt = [Optimize1qGatesDecomposition(basis_gates), CXCancellation()]
+
+    # 10. Schedule the circuit only when scheduling_method is supplied
+    if scheduling_method:
+        _scheduling = [TimeUnitAnalysis(instruction_durations)]
+        if scheduling_method in {'alap', 'as_late_as_possible'}:
+            _scheduling += [ALAPSchedule(instruction_durations)]
+        elif scheduling_method in {'asap', 'as_soon_as_possible'}:
+            _scheduling += [ASAPSchedule(instruction_durations)]
+        else:
+            raise TranspilerError("Invalid scheduling method %s." % scheduling_method)
 
     # Build pass manager
     pm1 = PassManager()
-    if coupling_map:
+    if coupling_map or initial_layout:
         pm1.append(_given_layout)
         pm1.append(_choose_layout_and_score, condition=_choose_layout_condition)
         pm1.append(_improve_layout, condition=_not_perfect_yet)
@@ -163,5 +211,7 @@ def level_1_pass_manager(pass_manager_config: PassManagerConfig) -> PassManager:
         pm1.append(_direction, condition=_direction_condition)
     pm1.append(_reset)
     pm1.append(_depth_check + _opt, do_while=_opt_control)
+    if scheduling_method:
+        pm1.append(_scheduling)
 
     return pm1

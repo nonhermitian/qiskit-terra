@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -24,6 +22,8 @@ Executing Experiments (:mod:`qiskit.execute`)
 import logging
 from time import time
 from qiskit.compiler import transpile, assemble, schedule
+from qiskit.providers import BaseBackend
+from qiskit.providers.backend import Backend
 from qiskit.qobj.utils import MeasLevel, MeasReturnType
 from qiskit.pulse import Schedule
 from qiskit.exceptions import QiskitError
@@ -41,14 +41,14 @@ def execute(experiments, backend,
             basis_gates=None, coupling_map=None,  # circuit transpile options
             backend_properties=None, initial_layout=None,
             seed_transpiler=None, optimization_level=None, pass_manager=None,
-            qobj_id=None, qobj_header=None, shots=1024,  # common run options
-            memory=False, max_credits=10, seed_simulator=None,
+            qobj_id=None, qobj_header=None, shots=None,  # common run options
+            memory=False, max_credits=None, seed_simulator=None,
             default_qubit_los=None, default_meas_los=None,  # schedule run options
-            schedule_los=None, meas_level=MeasLevel.CLASSIFIED,
-            meas_return=MeasReturnType.AVERAGE,
-            memory_slots=None, memory_slot_size=100, rep_time=None, parameter_binds=None,
-            schedule_circuit=False, inst_map=None, meas_map=None, scheduling_method=None,
-            init_qubits=None,
+            schedule_los=None, meas_level=None,
+            meas_return=None,
+            memory_slots=None, memory_slot_size=None, rep_time=None, rep_delay=None,
+            parameter_binds=None, schedule_circuit=False, inst_map=None, meas_map=None,
+            scheduling_method=None, init_qubits=None,
             **run_config):
     """Execute a list of :class:`qiskit.circuit.QuantumCircuit` or
     :class:`qiskit.pulse.Schedule` on a backend.
@@ -59,7 +59,7 @@ def execute(experiments, backend,
         experiments (QuantumCircuit or list[QuantumCircuit] or Schedule or list[Schedule]):
             Circuit(s) or pulse schedule(s) to execute
 
-        backend (BaseBackend):
+        backend (BaseBackend or Backend):
             Backend to execute circuits on.
             Transpiler options are automatically grabbed from
             backend.configuration() and backend.properties().
@@ -172,9 +172,14 @@ def execute(experiments, backend,
 
         memory_slot_size (int): Size of each memory slot if the output is Level 0.
 
-        rep_time (int): repetition time of the experiment in μs.
-            The delay between experiments will be rep_time.
-            Must be from the list provided by the device.
+        rep_time (int): Time per program execution in seconds. Must be from the list provided
+            by the backend (``backend.configuration().rep_times``). Defaults to the first entry.
+
+        rep_delay (float): Delay between programs in seconds. Only supported on certain
+            backends (``backend.configuration().dynamic_reprate_enabled`` ). If supported,
+            ``rep_delay`` will be used instead of ``rep_time`` and must be from the range supplied
+            by the backend (``backend.configuration().rep_delay_range``). Default is given by
+            ``backend.configuration().default_rep_delay``.
 
         parameter_binds (list[dict]): List of Parameter bindings over which the set of
             experiments will be executed. Each list element (bind) should be of the form
@@ -240,8 +245,7 @@ def execute(experiments, backend,
                                     coupling_map=coupling_map,
                                     seed_transpiler=seed_transpiler,
                                     backend_properties=backend_properties,
-                                    initial_layout=initial_layout,
-                                    backend=backend)
+                                    initial_layout=initial_layout)
         experiments = pass_manager.run(experiments)
     else:
         # transpiling the circuits using given transpile options
@@ -261,32 +265,86 @@ def execute(experiments, backend,
                                meas_map=meas_map,
                                method=scheduling_method)
 
-    # assembling the circuits into a qobj to be run on the backend
-    qobj = assemble(experiments,
-                    qobj_id=qobj_id,
-                    qobj_header=qobj_header,
-                    shots=shots,
-                    memory=memory,
-                    max_credits=max_credits,
-                    seed_simulator=seed_simulator,
-                    default_qubit_los=default_qubit_los,
-                    default_meas_los=default_meas_los,
-                    schedule_los=schedule_los,
-                    meas_level=meas_level,
-                    meas_return=meas_return,
-                    memory_slots=memory_slots,
-                    memory_slot_size=memory_slot_size,
-                    rep_time=rep_time,
-                    parameter_binds=parameter_binds,
-                    backend=backend,
-                    init_qubits=init_qubits,
-                    **run_config)
+    if isinstance(backend, BaseBackend):
+        # assembling the circuits into a qobj to be run on the backend
+        if shots is None:
+            shots = 1024
+        if max_credits is None:
+            max_credits = 10
+        if meas_level is None:
+            meas_level = MeasLevel.CLASSIFIED
+        if meas_return is None:
+            meas_return = MeasReturnType.AVERAGE
+        if memory_slot_size is None:
+            memory_slot_size = 100
 
-    # executing the circuits on the backend and returning the job
-    start_time = time()
-    job = backend.run(qobj, **run_config)
-    end_time = time()
-    _log_submission_time(start_time, end_time)
+        qobj = assemble(experiments,
+                        qobj_id=qobj_id,
+                        qobj_header=qobj_header,
+                        shots=shots,
+                        memory=memory,
+                        max_credits=max_credits,
+                        seed_simulator=seed_simulator,
+                        default_qubit_los=default_qubit_los,
+                        default_meas_los=default_meas_los,
+                        schedule_los=schedule_los,
+                        meas_level=meas_level,
+                        meas_return=meas_return,
+                        memory_slots=memory_slots,
+                        memory_slot_size=memory_slot_size,
+                        rep_time=rep_time,
+                        rep_delay=rep_delay,
+                        parameter_binds=parameter_binds,
+                        backend=backend,
+                        init_qubits=init_qubits,
+                        **run_config)
+
+        # executing the circuits on the backend and returning the job
+        start_time = time()
+        job = backend.run(qobj, **run_config)
+        end_time = time()
+        _log_submission_time(start_time, end_time)
+    elif isinstance(backend, Backend):
+        start_time = time()
+        run_kwargs = {
+            'shots': shots,
+            'memory': memory,
+            'seed_simulator': seed_simulator,
+            'default_qubit_los': default_qubit_los,
+            'default_meas_los': default_meas_los,
+            'schedule_los': schedule_los,
+            'meas_level': meas_level,
+            'meas_return': meas_return,
+            'memory_slots': memory_slots,
+            'memory_slot_size': memory_slot_size,
+            'rep_time': rep_time,
+            'rep_delay': rep_delay,
+            'parameter_binds': parameter_binds,
+            'init_qubits': init_qubits,
+        }
+        for key in run_kwargs:
+            if not hasattr(backend.options, key):
+                if run_kwargs[key] is not None:
+                    logger.info("%s backend doesn't support option %s so not "
+                                "passing that kwarg to run()", backend.name, key)
+                del run_kwargs[key]
+            elif key == 'shots' and run_kwargs[key] is None:
+                run_kwargs[key] = 1024
+            elif key == 'max_credits' and run_kwargs[key] is None:
+                run_kwargs[key] = 10
+            elif key == 'meas_level' and run_kwargs[key] is None:
+                run_kwargs[key] = MeasLevel.CLASSIFIED
+            elif key == 'meas_return' and run_kwargs[key] is None:
+                run_kwargs[key] = MeasReturnType.AVERAGE
+            elif key == 'memory_slot_size' and run_kwargs[key] is None:
+                run_kwargs[key] = 100
+
+        run_kwargs.update(run_config)
+        job = backend.run(experiments, **run_kwargs)
+        end_time = time()
+        _log_submission_time(start_time, end_time)
+    else:
+        raise QiskitError("Invalid backend type %s" % type(backend))
     return job
 
 

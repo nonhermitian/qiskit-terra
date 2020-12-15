@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -22,3 +20,4 @@ from .remove_final_measurements import RemoveFinalMeasurements
 from .merge_adjacent_barriers import MergeAdjacentBarriers
 from .dag_fixed_point import DAGFixedPoint
 from .fixed_point import FixedPoint
+from .error import Error

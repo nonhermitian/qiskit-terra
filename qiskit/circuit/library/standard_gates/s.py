@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017.
@@ -55,24 +53,27 @@ class SGate(Gate):
         """
         gate s a { u1(pi/2) a; }
         """
+        # pylint: disable=cyclic-import
+        from qiskit.circuit.quantumcircuit import QuantumCircuit
         from .u1 import U1Gate
-        definition = []
         q = QuantumRegister(1, 'q')
-        rule = [
+        qc = QuantumCircuit(q, name=self.name)
+        rules = [
             (U1Gate(pi / 2), [q[0]], [])
         ]
-        for inst in rule:
-            definition.append(inst)
-        self.definition = definition
+        for instr, qargs, cargs in rules:
+            qc._append(instr, qargs, cargs)
+
+        self.definition = qc
 
     def inverse(self):
         """Return inverse of S (SdgGate)."""
         return SdgGate()
 
-    def to_matrix(self):
+    def __array__(self, dtype=None):
         """Return a numpy.array for the S gate."""
         return numpy.array([[1, 0],
-                            [0, 1j]], dtype=complex)
+                            [0, 1j]], dtype=dtype)
 
 
 class SdgGate(Gate):
@@ -110,21 +111,24 @@ class SdgGate(Gate):
         """
         gate sdg a { u1(-pi/2) a; }
         """
+        # pylint: disable=cyclic-import
+        from qiskit.circuit.quantumcircuit import QuantumCircuit
         from .u1 import U1Gate
-        definition = []
         q = QuantumRegister(1, 'q')
-        rule = [
+        qc = QuantumCircuit(q, name=self.name)
+        rules = [
             (U1Gate(-pi / 2), [q[0]], [])
         ]
-        for inst in rule:
-            definition.append(inst)
-        self.definition = definition
+        for instr, qargs, cargs in rules:
+            qc._append(instr, qargs, cargs)
+
+        self.definition = qc
 
     def inverse(self):
         """Return inverse of Sdg (SGate)."""
         return SGate()
 
-    def to_matrix(self):
+    def __array__(self, dtype=None):
         """Return a numpy.array for the Sdg gate."""
         return numpy.array([[1, 0],
-                            [0, -1j]], dtype=complex)
+                            [0, -1j]], dtype=dtype)

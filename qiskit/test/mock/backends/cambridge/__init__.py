@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2019.
@@ -15,3 +13,4 @@
 # pylint: disable=missing-docstring
 
 from .fake_cambridge import FakeCambridge
+from .fake_cambridge import FakeCambridgeAlternativeBasis

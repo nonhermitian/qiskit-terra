@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #!python
 #cython: language_level = 3
 #distutils: language = c++
@@ -16,13 +15,14 @@
 # that they have been altered from the originals.
 
 cimport cython
-from libcpp.set cimport set as cset
+from libcpp.unordered_set cimport unordered_set as cset
 from .utils cimport NLayout, EdgeCollection
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef double compute_cost(double[:, ::1] dist, unsigned int * logic_to_phys,
-                          int[::1] gates, unsigned int num_gates) nogil:
+cdef double compute_cost(const double[:, ::1] dist,
+                         unsigned int * logic_to_phys,
+                         int[::1] gates, unsigned int num_gates) nogil:
     """ Computes the cost (distance) of a logical to physical mapping.
     
     Args:
@@ -45,7 +45,7 @@ cdef double compute_cost(double[:, ::1] dist, unsigned int * logic_to_phys,
 @cython.nonecheck(False)
 @cython.boundscheck(False)
 @cython.wraparound(False)
-cdef compute_random_scaling(double[:, ::1] scale, double[:, ::1] cdist2,
+cdef compute_random_scaling(double[:, ::1] scale, const double[:, ::1] cdist2,
                             double * rand, unsigned int num_qubits):
     """ Computes the symmetric random scaling (perturbation) matrix, 
     and places the values in the 'scale' array.
@@ -68,7 +68,8 @@ cdef compute_random_scaling(double[:, ::1] scale, double[:, ::1] cdist2,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def swap_trial(int num_qubits, NLayout int_layout, int[::1] int_qubit_subset,
-               int[::1] gates, double[:, ::1] cdist2, double[:, ::1] cdist, 
+               int[::1] gates, const double[:, ::1] cdist2,
+               const double[:, ::1] cdist, 
                int[::1] edges, double[:, ::1] scale, object rng):
     """ A single iteration of the tchastic swap mapping routine.
 

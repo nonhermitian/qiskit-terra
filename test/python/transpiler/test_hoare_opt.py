@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -21,7 +19,7 @@ from qiskit.transpiler.passes import HoareOptimizer
 from qiskit.converters import circuit_to_dag
 from qiskit import QuantumCircuit
 from qiskit.test import QiskitTestCase
-from qiskit.extensions.standard import XGate, RZGate, CSwapGate, SwapGate
+from qiskit.circuit.library import XGate, RZGate, CSwapGate, SwapGate
 from qiskit.dagcircuit import DAGNode
 from qiskit.quantum_info import Statevector
 
@@ -299,17 +297,42 @@ class TestHoareOptimizer(QiskitTestCase):
         """ The is_identity function determines whether a pair of gates
             forms the identity, when ignoring control qubits.
         """
-        seq = [DAGNode({'type': 'op', 'op': XGate().control()}),
-               DAGNode({'type': 'op', 'op': XGate().control(2)})]
+        seq = [DAGNode(type='op', op=XGate().control()),
+               DAGNode(type='op', op=XGate().control(2))]
         self.assertTrue(HoareOptimizer()._is_identity(seq))
 
-        seq = [DAGNode({'type': 'op', 'op': RZGate(-pi/2).control()}),
-               DAGNode({'type': 'op', 'op': RZGate(pi/2).control(2)})]
+        seq = [DAGNode(type='op', op=RZGate(-pi/2).control()),
+               DAGNode(type='op', op=RZGate(pi/2).control(2))]
         self.assertTrue(HoareOptimizer()._is_identity(seq))
 
-        seq = [DAGNode({'type': 'op', 'op': CSwapGate()}),
-               DAGNode({'type': 'op', 'op': SwapGate()})]
+        seq = [DAGNode(type='op', op=CSwapGate()),
+               DAGNode(type='op', op=SwapGate())]
         self.assertTrue(HoareOptimizer()._is_identity(seq))
+
+    def test_multiple_pass(self):
+        """ Verify that multiple pass can be run
+            with the same Hoare instance.
+        """
+        circuit1 = QuantumCircuit(2)
+        circuit1.z(0)
+        circuit1.h(1)
+        circuit1.z(1)
+
+        circuit2 = QuantumCircuit(2)
+        circuit2.z(1)
+        circuit2.h(0)
+        circuit2.z(0)
+
+        expected = QuantumCircuit(2)
+        expected.h(0)
+        expected.z(0)
+
+        pass_ = HoareOptimizer()
+
+        pass_.run(circuit_to_dag(circuit1))
+        result2 = pass_.run(circuit_to_dag(circuit2))
+
+        self.assertEqual(result2, circuit_to_dag(expected))
 
 
 if __name__ == '__main__':

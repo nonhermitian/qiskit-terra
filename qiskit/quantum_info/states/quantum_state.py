@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -17,23 +15,17 @@ Abstract QuantumState class.
 """
 
 import copy
-import warnings
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 import numpy as np
 
 from qiskit.exceptions import QiskitError
-from qiskit.quantum_info.operators.base_operator import BaseOperator
 from qiskit.quantum_info.operators.operator import Operator
-from qiskit.quantum_info.operators.predicates import ATOL_DEFAULT, RTOL_DEFAULT
+from qiskit.result.counts import Counts
 
 
-class QuantumState(ABC):
+class QuantumState:
     """Abstract quantum state base class"""
-
-    _ATOL_DEFAULT = ATOL_DEFAULT
-    _RTOL_DEFAULT = RTOL_DEFAULT
-    _MAX_TOL = 1e-4
 
     def __init__(self, dims):
         """Initialize a state object."""
@@ -47,6 +39,9 @@ class QuantumState(ABC):
         # RNG for measure functions
         self._rng_generator = None
 
+    # Set higher priority than Numpy array and matrix classes
+    __array_priority__ = 20
+
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.dims() == other.dims()
 
@@ -59,40 +54,6 @@ class QuantumState(ABC):
     def num_qubits(self):
         """Return the number of qubits if a N-qubit state or None otherwise."""
         return self._num_qubits
-
-    @property
-    def atol(self):
-        """The absolute tolerance parameter for float comparisons."""
-        return self.__class__._ATOL_DEFAULT
-
-    @property
-    def rtol(self):
-        """The relative tolerance parameter for float comparisons."""
-        return self.__class__._RTOL_DEFAULT
-
-    @classmethod
-    def set_atol(cls, value):
-        """Set the class default absolute tolerance parameter for float comparisons."""
-        if value < 0:
-            raise QiskitError(
-                "Invalid atol ({}) must be non-negative.".format(value))
-        if value > cls._MAX_TOL:
-            raise QiskitError(
-                "Invalid atol ({}) must be less than {}.".format(
-                    value, cls._MAX_TOL))
-        cls._ATOL_DEFAULT = value
-
-    @classmethod
-    def set_rtol(cls, value):
-        """Set the class default relative tolerance parameter for float comparisons."""
-        if value < 0:
-            raise QiskitError(
-                "Invalid atol ({}) must be non-negative.".format(value))
-        if value > cls._MAX_TOL:
-            raise QiskitError(
-                "Invalid atol ({}) must be less than {}.".format(
-                    value, cls._MAX_TOL))
-        cls._RTOL_DEFAULT = value
 
     @property
     def _rng(self):
@@ -225,63 +186,6 @@ class QuantumState(ABC):
         raise NotImplementedError(
             "{} does not support scalar multiplication".format(type(self)))
 
-    def add(self, other):
-        """Return the linear combination self + other.
-
-        DEPRECATED: use ``state + other`` instead.
-
-        Args:
-            other (QuantumState): a quantum state object.
-
-        Returns:
-            LinearOperator: the linear combination self + other.
-
-        Raises:
-            QiskitError: if other is not a quantum state, or has
-                         incompatible dimensions.
-        """
-        warnings.warn("`{}.add` method is deprecated, use + binary operator"
-                      "`state + other` instead.".format(self.__class__),
-                      DeprecationWarning)
-        return self._add(other)
-
-    def subtract(self, other):
-        """Return the linear operator self - other.
-
-        DEPRECATED: use ``state - other`` instead.
-
-        Args:
-            other (QuantumState): a quantum state object.
-
-        Returns:
-            LinearOperator: the linear combination self - other.
-
-        Raises:
-            QiskitError: if other is not a quantum state, or has
-                         incompatible dimensions.
-        """
-        warnings.warn("`{}.subtract` method is deprecated, use - binary operator"
-                      "`state - other` instead.".format(self.__class__),
-                      DeprecationWarning)
-        return self._add(-other)
-
-    def multiply(self, other):
-        """Return the scalar multipled state other * self.
-
-        Args:
-            other (complex): a complex number.
-
-        Returns:
-            QuantumState: the scalar multipled state other * self.
-
-        Raises:
-            QiskitError: if other is not a valid complex number.
-        """
-        warnings.warn("`{}.multiply` method is deprecated, use * binary operator"
-                      "`other * state` instead.".format(self.__class__),
-                      DeprecationWarning)
-        return self._multiply(other)
-
     @abstractmethod
     def evolve(self, other, qargs=None):
         """Evolve a quantum state by the operator.
@@ -297,6 +201,19 @@ class QuantumState(ABC):
         Raises:
             QiskitError: if the operator dimension does not match the
                          specified QuantumState subsystem dimensions.
+        """
+        pass
+
+    @abstractmethod
+    def expectation_value(self, oper, qargs=None):
+        """Compute the expectation value of an operator.
+
+        Args:
+            oper (BaseOperator): an operator to evaluate expval.
+            qargs (None or list): subsystems to apply the operator on.
+
+        Returns:
+            complex: the expectation value.
         """
         pass
 
@@ -383,7 +300,7 @@ class QuantumState(ABC):
                                 subsystems (Default: None).
 
         Returns:
-            dict: sampled counts dictionary.
+            Counts: sampled counts dictionary.
 
         Additional Information:
 
@@ -400,7 +317,7 @@ class QuantumState(ABC):
 
         # Combine all samples into a counts dictionary
         inds, counts = np.unique(samples, return_counts=True)
-        return dict(zip(inds, counts))
+        return Counts(zip(inds, counts))
 
     def measure(self, qargs=None):
         """Measure subsystems and return outcome and post-measure state.
@@ -445,7 +362,16 @@ class QuantumState(ABC):
     @classmethod
     def _automatic_dims(cls, dims, size):
         """Check if input dimension corresponds to qubit subsystems."""
-        return BaseOperator._automatic_dims(dims, size)
+        if dims is None:
+            dims = size
+        elif np.product(dims) != size:
+            raise QiskitError("dimensions do not match size.")
+        if isinstance(dims, (int, np.integer)):
+            num_qubits = int(np.log2(dims))
+            if 2 ** num_qubits == size:
+                return num_qubits * (2,)
+            return (dims,)
+        return tuple(dims)
 
     def _set_dims(self, dims):
         """Set dimension attribute"""
@@ -456,7 +382,7 @@ class QuantumState(ABC):
         # of all subsystem dimensions
         self._dim = np.product(dims)
         # Check if an N-qubit operator
-        if set(self._dims) == set([2]):
+        if set(self._dims) == {2}:
             # If so set the number of qubits
             self._num_qubits = len(self._dims)
         else:

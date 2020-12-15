@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2020.
@@ -86,3 +84,9 @@ class TestBitClass(QiskitTestCase):
         test_bit.index = 2
         new_hash = hash(test_bit)
         self.assertNotEqual(orig_hash, new_hash)
+
+    def test_bit_eq_invalid_type_comparison(self):
+        orig_reg = mock.MagicMock()
+        orig_reg.size = 3
+        test_bit = bit.Bit(orig_reg, 0)
+        self.assertNotEqual(test_bit, 3.14)

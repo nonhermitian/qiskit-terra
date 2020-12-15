@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2019.
@@ -21,7 +19,9 @@ from typing import Union, List
 
 import numpy as np
 from qiskit.circuit.quantumcircuit import QuantumCircuit
+from qiskit.circuit.quantumregister import QuantumRegister
 from qiskit.circuit.library.standard_gates import RXXGate
+from qiskit.circuit.gate import Gate
 
 
 class GMS(QuantumCircuit):
@@ -62,13 +62,13 @@ class GMS(QuantumCircuit):
     .. math::
 
         GMS(\chi_{12}, \chi_{13}, ..., \chi_{n-1 n}) =
-        exp(-i \sum_{i=1}^{n} \sum_{j=i+1}^{n} X{\otimes}X \frac{\chi_{ij}}{2}) =
+        exp(-i \sum_{i=1}^{n} \sum_{j=i+1}^{n} X{\otimes}X \frac{\chi_{ij}}{2})
 
     **References:**
 
     [1] Sørensen, A. and Mølmer, K., Multi-particle entanglement of hot trapped ions.
     Physical Review Letters. 82 (9): 1835–1838.
-    `arXiv:9810040 <https://arxiv.org/abs/9810040>`_
+    `arXiv:9810040 <https://arxiv.org/abs/quant-ph/9810040>`_
 
     [2] Maslov, D. and Nam, Y., Use of global interactions in efficient quantum circuit
     constructions. New Journal of Physics, 20(3), p.033018.
@@ -94,3 +94,31 @@ class GMS(QuantumCircuit):
             for j in range(i + 1, self.num_qubits):
                 gms.append(RXXGate(theta[i][j]), [i, j])
         self.append(gms, self.qubits)
+
+
+class MSGate(Gate):
+    """MSGate has been deprecated.
+    Please use ``GMS`` in ``qiskit.circuit.generalized_gates`` instead.
+
+    Global Mølmer–Sørensen gate.
+
+    The Mølmer–Sørensen gate is native to ion-trap systems. The global MS can be
+    applied to multiple ions to entangle multiple qubits simultaneously.
+
+    In the two-qubit case, this is equivalent to an XX(theta) interaction,
+    and is thus reduced to the RXXGate.
+    """
+
+    def __init__(self, num_qubits, theta, label=None):
+        """Create new MS gate."""
+        super().__init__('ms', num_qubits, [theta], label=label)
+
+    def _define(self):
+        theta = self.params[0]
+        q = QuantumRegister(self.num_qubits, 'q')
+        qc = QuantumCircuit(q, name=self.name)
+        for i in range(self.num_qubits):
+            for j in range(i + 1, self.num_qubits):
+                qc._append(RXXGate(theta), [q[i], q[j]], [])
+
+        self.definition = qc

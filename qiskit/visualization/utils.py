@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -17,11 +15,14 @@
 """Common visualization utilities."""
 
 import re
+from collections import OrderedDict
 
 import numpy as np
-
 from qiskit.converters import circuit_to_dag
+from qiskit.quantum_info.states import DensityMatrix
+from qiskit.quantum_info.operators import PauliTable, SparsePauliOp
 from qiskit.visualization.exceptions import VisualizationError
+from qiskit.circuit import Measure
 
 try:
     import PIL
@@ -58,30 +59,6 @@ def generate_latex_label(label):
         after_match = after_match.replace(r'\$', '$')
         return utf8tolatex(before_match) + mathmode_string + utf8tolatex(
             after_match)
-
-
-def _validate_input_state(quantum_state):
-    """Validates the input to state visualization functions.
-
-    Args:
-        quantum_state (ndarray): Input state / density matrix.
-    Returns:
-        rho: A 2d numpy array for the density matrix.
-    Raises:
-        VisualizationError: Invalid input.
-    """
-    rho = np.asarray(quantum_state)
-    if rho.ndim == 1:
-        rho = np.outer(rho, np.conj(rho))
-    # Check the shape of the input is a square matrix
-    shape = np.shape(rho)
-    if len(shape) != 2 or shape[0] != shape[1]:
-        raise VisualizationError("Input is not a valid quantum state.")
-    # Check state is an n-qubit state
-    num = int(np.log2(rho.shape[0]))
-    if 2 ** num != rho.shape[0]:
-        raise VisualizationError("Input is not a multi-qubit quantum state.")
-    return rho
 
 
 def _trim(image):
@@ -124,23 +101,28 @@ def _get_layered_instructions(circuit, reverse_bits=False,
     justify = justify if justify in ('right', 'none') else 'left'
 
     dag = circuit_to_dag(circuit)
+
     ops = []
-    qregs = dag.qubits()
-    cregs = dag.clbits()
+    qregs = dag.qubits
+    cregs = dag.clbits
+
+    # Create a mapping of each register to the max layer number for all measure ops
+    # with that register as the target. Then when a node with condition is seen,
+    # it will be placed to the right of the measure op if the register matches.
+    measure_map = OrderedDict([(c, -1) for c in circuit.cregs])
 
     if justify == 'none':
         for node in dag.topological_op_nodes():
             ops.append([node])
-
     else:
-        ops = _LayerSpooler(dag, justify)
+        ops = _LayerSpooler(dag, justify, measure_map)
 
     if reverse_bits:
         qregs.reverse()
         cregs.reverse()
 
     if not idle_wires:
-        for wire in dag.idle_wires():
+        for wire in dag.idle_wires(ignore=['barrier']):
             if wire in qregs:
                 qregs.remove(wire)
             if wire in cregs:
@@ -194,24 +176,22 @@ def _any_crossover(qregs, node, nodes):
 class _LayerSpooler(list):
     """Manipulate list of layer dicts for _get_layered_instructions."""
 
-    def __init__(self, dag, justification):
+    def __init__(self, dag, justification, measure_map):
         """Create spool"""
-        super(_LayerSpooler, self).__init__()
+        super().__init__()
         self.dag = dag
-        self.qregs = dag.qubits()
+        self.qregs = dag.qubits
         self.justification = justification
+        self.measure_map = measure_map
 
         if self.justification == 'left':
-
             for dag_layer in dag.layers():
                 current_index = len(self) - 1
                 dag_nodes = _sorted_nodes(dag_layer)
                 for node in dag_nodes:
                     self.add(node, current_index)
-
         else:
             dag_layers = []
-
             for dag_layer in dag.layers():
                 dag_layers.append(dag_layer)
 
@@ -238,32 +218,36 @@ class _LayerSpooler(list):
 
     def slide_from_left(self, node, index):
         """Insert node into first layer where there is no conflict going l > r"""
-        if not self:
-            self.append([node])
-            inserted = True
+        measure_layer = None
+        if isinstance(node.op, Measure):
+            measure_reg = node.cargs[0].register
 
+        if not self:
+            inserted = True
+            self.append([node])
         else:
             inserted = False
             curr_index = index
-            last_insertable_index = None
-
-            while curr_index > -1:
+            index_stop = -1 if not node.condition else self.measure_map[node.condition[0]]
+            last_insertable_index = -1
+            while curr_index > index_stop:
                 if self.is_found_in(node, self[curr_index]):
                     break
                 if self.insertable(node, self[curr_index]):
                     last_insertable_index = curr_index
                 curr_index = curr_index - 1
 
-            if last_insertable_index:
-                self[last_insertable_index].append(node)
+            if last_insertable_index >= 0:
                 inserted = True
-
+                self[last_insertable_index].append(node)
+                measure_layer = last_insertable_index
             else:
                 inserted = False
                 curr_index = index
                 while curr_index < len(self):
                     if self.insertable(node, self[curr_index]):
                         self[curr_index].append(node)
+                        measure_layer = curr_index
                         inserted = True
                         break
                     curr_index = curr_index + 1
@@ -271,12 +255,17 @@ class _LayerSpooler(list):
         if not inserted:
             self.append([node])
 
+        if isinstance(node.op, Measure):
+            if not measure_layer:
+                measure_layer = len(self) - 1
+            if measure_layer > self.measure_map[measure_reg]:
+                self.measure_map[measure_reg] = measure_layer
+
     def slide_from_right(self, node, index):
         """Insert node into rightmost layer as long there is no conflict."""
         if not self:
             self.insert(0, [node])
             inserted = True
-
         else:
             inserted = False
             curr_index = index
@@ -292,7 +281,6 @@ class _LayerSpooler(list):
             if last_insertable_index:
                 self[last_insertable_index].append(node)
                 inserted = True
-
             else:
                 curr_index = index
                 while curr_index > -1:
@@ -311,3 +299,50 @@ class _LayerSpooler(list):
             self.slide_from_left(node, index)
         else:
             self.slide_from_right(node, index)
+
+
+def _bloch_multivector_data(state):
+    """Return list of bloch vectors for each qubit
+
+    Args:
+        state (DensityMatrix or Statevector): an N-qubit state.
+
+    Returns:
+        list: list of bloch vectors (x, y, z) for each qubit.
+
+    Raises:
+        VisualizationError: if input is not an N-qubit state.
+    """
+    rho = DensityMatrix(state)
+    num = rho.num_qubits
+    if num is None:
+        raise VisualizationError("Input is not a multi-qubit quantum state.")
+    pauli_singles = PauliTable.from_labels(['X', 'Y', 'Z'])
+    bloch_data = []
+    for i in range(num):
+        if num > 1:
+            paulis = PauliTable(np.zeros((3, 2 * (num-1)), dtype=np.bool)).insert(
+                i, pauli_singles, qubit=True)
+        else:
+            paulis = pauli_singles
+        bloch_state = [np.real(np.trace(np.dot(mat, rho.data))) for mat in paulis.matrix_iter()]
+        bloch_data.append(bloch_state)
+    return bloch_data
+
+
+def _paulivec_data(state):
+    """Return paulivec data for plotting.
+
+    Args:
+        state (DensityMatrix or Statevector): an N-qubit state.
+
+    Returns:
+        tuple: (labels, values) for Pauli vec.
+
+    Raises:
+        VisualizationError: if input is not an N-qubit state.
+    """
+    rho = SparsePauliOp.from_operator(DensityMatrix(state))
+    if rho.num_qubits is None:
+        raise VisualizationError("Input is not a multi-qubit quantum state.")
+    return rho.table.to_labels(), np.real(rho.coeffs)

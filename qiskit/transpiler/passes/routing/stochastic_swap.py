@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -87,7 +85,7 @@ class StochasticSwap(TransformationPass):
         if len(dag.qregs) != 1 or dag.qregs.get('q', None) is None:
             raise TranspilerError('StochasticSwap runs on physical circuits only')
 
-        if len(dag.qubits()) > len(self.coupling_map.physical_qubits):
+        if len(dag.qubits) > len(self.coupling_map.physical_qubits):
             raise TranspilerError('The layout does not match the amount of qubits in the DAG')
 
         canonical_register = dag.qregs['q']
@@ -265,7 +263,7 @@ class StochasticSwap(TransformationPass):
         for creg in layer_circuit.cregs.values():
             dagcircuit_output.add_creg(creg)
 
-        order = layout.reorder_bits(dagcircuit_output.qubits())
+        order = layout.reorder_bits(dagcircuit_output.qubits)
         dagcircuit_output.compose(layer_circuit, qubits=order)
 
         return dagcircuit_output
@@ -301,12 +299,7 @@ class StochasticSwap(TransformationPass):
 
         # Construct an empty DAGCircuit with the same set of
         # qregs and cregs as the input circuit
-        dagcircuit_output = DAGCircuit()
-        dagcircuit_output.name = circuit_graph.name
-        for qreg in circuit_graph.qregs.values():
-            dagcircuit_output.add_qreg(qreg)
-        for creg in circuit_graph.cregs.values():
-            dagcircuit_output.add_creg(creg)
+        dagcircuit_output = circuit_graph._copy_circuit_metadata()
 
         logger.debug("trivial_layout = %s", layout)
 

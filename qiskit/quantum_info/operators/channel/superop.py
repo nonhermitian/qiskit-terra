@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2019.
@@ -113,9 +111,14 @@ class SuperOp(QuantumChannel):
                 output_dims = data.output_dims()
         # Finally we format and validate the channel input and
         # output dimensions
-        input_dims = self._automatic_dims(input_dims, input_dim)
-        output_dims = self._automatic_dims(output_dims, output_dim)
-        super().__init__(super_mat, input_dims, output_dims, 'SuperOp')
+        input_dims, output_dims, num_qubits = self._automatic_dims(
+            input_dims, input_dim, output_dims, output_dim)
+        super().__init__(super_mat, input_dims, output_dims, num_qubits, 'SuperOp')
+
+    def __array__(self, dtype=None):
+        if dtype:
+            return np.asarray(self.data, dtype=dtype)
+        return self.data
 
     @property
     def _shape(self):
@@ -183,11 +186,11 @@ class SuperOp(QuantumChannel):
 
         # Compute tensor contraction indices from qargs
         if front:
-            num_indices = len(self._input_dims)
-            shift = 2 * len(self._output_dims)
+            num_indices = self._num_input
+            shift = 2 * self._num_output
             right_mul = True
         else:
-            num_indices = len(self._output_dims)
+            num_indices = self._num_output
             shift = 0
             right_mul = False
 
@@ -330,8 +333,9 @@ class SuperOp(QuantumChannel):
         tensor = Operator._einsum_matmul(tensor, mat, indices)
         # Replace evolved dimensions
         new_dims = list(state.dims())
+        output_dims = self.output_dims()
         for i, qubit in enumerate(qargs):
-            new_dims[qubit] = self._output_dims[i]
+            new_dims[qubit] = output_dims[i]
         new_dim = np.product(new_dims)
         # reshape tensor to density matrix
         tensor = np.reshape(tensor, (new_dim, new_dim))
@@ -378,12 +382,16 @@ class SuperOp(QuantumChannel):
 
     def _append_instruction(self, obj, qargs=None):
         """Update the current Operator by apply an instruction."""
+        from qiskit.circuit.barrier import Barrier
+
         chan = self._instruction_to_superop(obj)
         if chan is not None:
             # Perform the composition and inplace update the current state
             # of the operator
             op = self.compose(chan, qargs=qargs)
             self._data = op.data
+        elif isinstance(obj, Barrier):
+            return
         else:
             # If the instruction doesn't have a matrix defined we use its
             # circuit decomposition definition if it exists, otherwise we
@@ -391,7 +399,11 @@ class SuperOp(QuantumChannel):
             if obj.definition is None:
                 raise QiskitError('Cannot apply Instruction: {}'.format(
                     obj.name))
-            for instr, qregs, cregs in obj.definition:
+            if not isinstance(obj.definition, QuantumCircuit):
+                raise QiskitError('{} instruction definition is {}; '
+                                  'expected QuantumCircuit'.format(
+                                      obj.name, type(obj.definition)))
+            for instr, qregs, cregs in obj.definition.data:
                 if cregs:
                     raise QiskitError(
                         'Cannot apply instruction with classical registers: {}'

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2020.
@@ -16,6 +14,7 @@
 Symplectic Operators
 """
 
+from .pauli import Pauli
 from .pauli_table import PauliTable
 from .pauli_utils import pauli_basis
 from .stabilizer_table import StabilizerTable

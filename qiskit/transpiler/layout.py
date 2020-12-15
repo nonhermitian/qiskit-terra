@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2018.
@@ -19,7 +17,6 @@ Layout is the relation between virtual (qu)bits and physical (qu)bits.
 Virtual (qu)bits are tuples, e.g. `(QuantumRegister(3, 'qr'), 2)` or simply `qr[2]`.
 Physical (qu)bits are integers.
 """
-import warnings
 
 from qiskit.circuit.quantumregister import Qubit
 from qiskit.transpiler.exceptions import LayoutError
@@ -132,6 +129,11 @@ class Layout():
     def __len__(self):
         return len(self._p2v)
 
+    def __eq__(self, other):
+        if isinstance(other, Layout):
+            return self._p2v == other._p2v and self._v2p == other._v2p
+        return False
+
     def copy(self):
         """Returns a copy of a Layout instance."""
         layout_copy = type(self)()
@@ -224,10 +226,6 @@ class Layout():
             LayoutError: another_layout can be bigger than self, but not smaller.
                 Otherwise, raises.
         """
-        warnings.warn('combine_into_edge_map is deprecated as of 0.14.0 and '
-                      'will be removed in a future release. Instead '
-                      'reorder_bits() should be used', DeprecationWarning,
-                      stacklevel=2)
         edge_map = dict()
 
         for virtual, physical in self.get_virtual_bits().items():
@@ -293,9 +291,8 @@ class Layout():
             raise LayoutError('Duplicate values not permitted; Layout is bijective.')
         num_qubits = sum(reg.size for reg in qregs)
         # Check if list is too short to cover all qubits
-        if len(int_list) < num_qubits:
-            err_msg = 'Integer list length must equal number of qubits in circuit.'
-            raise LayoutError(err_msg)
+        if len(int_list) != num_qubits:
+            raise LayoutError('Integer list length must equal number of qubits in circuit.')
         out = Layout()
         main_idx = 0
         for qreg in qregs:

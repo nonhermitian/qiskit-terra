@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This code is part of Qiskit.
 #
 # (C) Copyright IBM 2017, 2020.
@@ -92,11 +90,14 @@ class iSwapGate(Gate):
             h q[1];
         }
         """
+        # pylint: disable=cyclic-import
+        from qiskit.circuit.quantumcircuit import QuantumCircuit
         from .h import HGate
         from .s import SGate
         from .x import CXGate
         q = QuantumRegister(2, 'q')
-        self.definition = [
+        qc = QuantumCircuit(q, name=self.name)
+        rules = [
             (SGate(), [q[0]], []),
             (SGate(), [q[1]], []),
             (HGate(), [q[0]], []),
@@ -104,10 +105,14 @@ class iSwapGate(Gate):
             (CXGate(), [q[1], q[0]], []),
             (HGate(), [q[1]], [])
         ]
+        for instr, qargs, cargs in rules:
+            qc._append(instr, qargs, cargs)
 
-    def to_matrix(self):
+        self.definition = qc
+
+    def __array__(self, dtype=None):
         """Return a numpy.array for the iSWAP gate."""
         return np.array([[1, 0, 0, 0],
                          [0, 0, 1j, 0],
                          [0, 1j, 0, 0],
-                         [0, 0, 0, 1]], dtype=complex)
+                         [0, 0, 0, 1]], dtype=dtype)
